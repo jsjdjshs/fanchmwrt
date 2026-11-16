@@ -7,6 +7,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          repository: fanchmwrt/fanchmwrt
           ref: fanchmwrt-25.12.4
           fetch-depth: 1
 
