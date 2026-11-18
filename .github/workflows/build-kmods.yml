@@ -1,4 +1,4 @@
-name: Build USB dongle kmods
+name: Build USB dongle driver packages
 on: workflow_dispatch
 jobs:
   build:
@@ -29,7 +29,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure
+      - name: Configure driver packages only
         run: |
           printf '%s\n' CONFIG_TARGET_ramips=y CONFIG_TARGET_ramips_mt7621=y \
             CONFIG_TARGET_ramips_mt7621_DEVICE_jdcloud_re-sp-01b=y > .config
@@ -52,6 +52,8 @@ jobs:
             CONFIG_PACKAGE_usb-modeswitch=y >> .config
           make defconfig
           grep -E 'DEVICE_jdcloud|CONFIG_TARGET_ramips_mt7621=' .config
+          echo "=== selected USB driver packages ==="
+          grep '^CONFIG_PACKAGE_kmod-usb\|^CONFIG_PACKAGE_kmod-mii\|^CONFIG_PACKAGE_usb-modeswitch' .config
 
       - name: Build tools
         run: make -j"$(nproc)" tools/install
@@ -62,23 +64,27 @@ jobs:
       - name: Build kernel
         run: make -j"$(nproc)" target/linux/compile
 
-      - name: Build kmods
+      - name: Build driver packages
         run: |
           make -j"$(nproc)" package/kernel/linux/compile
-          make -j"$(nproc)" package/feeds/packages/usb-modeswitch/compile || true
+          make -j"$(nproc)" package/feeds/packages/usb-modeswitch/compile
 
-      - name: Verify ABI
+      - name: Collect USB packages only
         run: |
-          echo "进入这一步后，找 kernel 包名，哈希应为 364f8debbcd4cddc1f038dea515bf8a5"
-          ls -1 bin/targets/ramips/mt7621/packages/ | grep -i '^kernel' || true
-          echo "--- kmod packages ---"
-          ls -1 bin/targets/ramips/mt7621/packages/*.apk 2>/dev/null | head -40
+          mkdir -p out/targets out/base
+          cp bin/targets/ramips/mt7621/packages/kernel-*.apk out/targets/
+          cp bin/targets/ramips/mt7621/packages/kmod-mii-*.apk out/targets/
+          cp bin/targets/ramips/mt7621/packages/kmod-usb-*.apk out/targets/
+          find bin/packages/mipsel_24kc -type f -name 'usb-modeswitch-*.apk' \
+            -exec cp {} out/base/ \; 2>/dev/null || true
+          echo "=== package list (USB drivers and required kernel ABI only) ==="
+          find out -type f -name '*.apk' -printf '%f\n' | sort
+          echo "=== kernel ABI ==="
+          find out/targets -maxdepth 1 -name 'kernel-*.apk' -printf '%f\n'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ramips-mt7621-kmods
-          if-no-files-found: warn
+          name: usb-driver-packages-only
+          if-no-files-found: error
           retention-days: 30
-          path: |
-            bin/targets/ramips/mt7621/packages/
-            bin/packages/mipsel_24kc/
+          path: out/
