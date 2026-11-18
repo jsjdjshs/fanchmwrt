@@ -1,4 +1,4 @@
-name: Build USB dongle driver packages
+name: Build FanchmWrt USB driver firmware
 on: workflow_dispatch
 jobs:
   build:
@@ -29,7 +29,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure driver packages only
+      - name: Configure device and USB drivers
         run: |
           printf '%s\n' CONFIG_TARGET_ramips=y CONFIG_TARGET_ramips_mt7621=y \
             CONFIG_TARGET_ramips_mt7621_DEVICE_jdcloud_re-sp-01b=y > .config
@@ -50,36 +50,37 @@ jobs:
             CONFIG_PACKAGE_kmod-usb-serial-wwan=y \
             CONFIG_PACKAGE_kmod-usb-wdm=y >> .config
           make defconfig
-          grep -E 'DEVICE_jdcloud|CONFIG_TARGET_ramips_mt7621=' .config
+          echo "=== device ==="
+          grep -E '^CONFIG_TARGET_ramips_mt7621=|^CONFIG_TARGET_ramips_mt7621_DEVICE_jdcloud_re-sp-01b=' .config
           echo "=== selected USB driver packages ==="
           grep '^CONFIG_PACKAGE_kmod-usb\|^CONFIG_PACKAGE_kmod-mii' .config
 
-      - name: Build tools
-        run: make -j"$(nproc)" tools/install
+      - name: Build firmware
+        run: make -j"$(nproc)" BUILD_LOG=1
 
-      - name: Build toolchain
-        run: make -j"$(nproc)" toolchain/install
-
-      - name: Build kernel
-        run: make -j"$(nproc)" target/linux/compile
-
-      - name: Build driver packages
-        run: make -j"$(nproc)" package/kernel/linux/compile
-
-      - name: Collect USB packages only
+      - name: Verify image and collect metadata
         run: |
-          mkdir -p out/targets
-          cp bin/targets/ramips/mt7621/packages/kernel-*.apk out/targets/
-          cp bin/targets/ramips/mt7621/packages/kmod-mii-*.apk out/targets/
-          cp bin/targets/ramips/mt7621/packages/kmod-usb-*.apk out/targets/
-          echo "=== package list (USB drivers and required kernel ABI only) ==="
-          find out -type f -name '*.apk' -printf '%f\n' | sort
-          echo "=== kernel ABI ==="
-          find out/targets -maxdepth 1 -name 'kernel-*.apk' -printf '%f\n'
+          set -eu
+          mkdir -p out
+          IMAGE=$(find bin/targets/ramips/mt7621 -maxdepth 1 \
+            -type f -name '*jdcloud_re-sp-01b*squashfs-sysupgrade.bin' -print -quit)
+          test -n "$IMAGE"
+          cp "$IMAGE" out/
+          SIZE=$(stat -c %s "$IMAGE")
+          LIMIT=$((27328 * 1024))
+          echo "Image: $(basename "$IMAGE")"
+          echo "Size: $SIZE bytes; device image limit: $LIMIT bytes"
+          test "$SIZE" -le "$LIMIT"
+          sha256sum out/*.bin | tee out/SHA256SUMS
+          echo "Kernel ABI package:"
+          find bin/targets/ramips/mt7621/packages -maxdepth 1 -name 'kernel-*.apk' -printf '%f\n' | tee out/kernel-abi.txt
+          echo "USB package names selected in image config:"
+          grep -E '^CONFIG_PACKAGE_(kmod-mii|kmod-usb-.*)=y' .config | sort | tee out/usb-packages.txt
+          echo "No files/ overlay was added; no network, wireless, or firewall settings are embedded."
 
       - uses: actions/upload-artifact@v4
         with:
-          name: usb-driver-packages-only
+          name: fanchmwrt-re-sp-01b-usb-drivers-sysupgrade
           if-no-files-found: error
           retention-days: 30
           path: out/
