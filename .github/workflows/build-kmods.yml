@@ -48,12 +48,11 @@ jobs:
             CONFIG_PACKAGE_kmod-usb-serial=y \
             CONFIG_PACKAGE_kmod-usb-serial-option=y \
             CONFIG_PACKAGE_kmod-usb-serial-wwan=y \
-            CONFIG_PACKAGE_kmod-usb-wdm=y \
-            CONFIG_PACKAGE_usb-modeswitch=y >> .config
+            CONFIG_PACKAGE_kmod-usb-wdm=y >> .config
           make defconfig
           grep -E 'DEVICE_jdcloud|CONFIG_TARGET_ramips_mt7621=' .config
           echo "=== selected USB driver packages ==="
-          grep '^CONFIG_PACKAGE_kmod-usb\|^CONFIG_PACKAGE_kmod-mii\|^CONFIG_PACKAGE_usb-modeswitch' .config
+          grep '^CONFIG_PACKAGE_kmod-usb\|^CONFIG_PACKAGE_kmod-mii' .config
 
       - name: Build tools
         run: make -j"$(nproc)" tools/install
@@ -65,18 +64,14 @@ jobs:
         run: make -j"$(nproc)" target/linux/compile
 
       - name: Build driver packages
-        run: |
-          make -j"$(nproc)" package/kernel/linux/compile
-          make -j"$(nproc)" package/feeds/packages/usb-modeswitch/compile
+        run: make -j"$(nproc)" package/kernel/linux/compile
 
       - name: Collect USB packages only
         run: |
-          mkdir -p out/targets out/base
+          mkdir -p out/targets
           cp bin/targets/ramips/mt7621/packages/kernel-*.apk out/targets/
           cp bin/targets/ramips/mt7621/packages/kmod-mii-*.apk out/targets/
           cp bin/targets/ramips/mt7621/packages/kmod-usb-*.apk out/targets/
-          find bin/packages/mipsel_24kc -type f -name 'usb-modeswitch-*.apk' \
-            -exec cp {} out/base/ \; 2>/dev/null || true
           echo "=== package list (USB drivers and required kernel ABI only) ==="
           find out -type f -name '*.apk' -printf '%f\n' | sort
           echo "=== kernel ABI ==="
